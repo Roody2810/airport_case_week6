@@ -1,0 +1,22 @@
+[server]
+# Eigen poort, zodat dit dashboard niet botst met andere Streamlit-apps op 8501
+port = 8510
+# Pagina ververst vanzelf als je een bestand opslaat
+runOnSave = true
+
+[client]
+# Verbergt de Deploy-knop en ontwikkelaarsmenu's tijdens de presentatie
+toolbarMode = "viewer"
+
+[browser]
+gatherUsageStats = false
+
+# Vaste lichte huisstijl: de grafieken zijn op een lichte achtergrond ontworpen.
+# Bron opties: https://docs.streamlit.io/develop/concepts/configuration/theming
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f3f5f8"
+textColor = "#1d2433"
+font = "sans serif"
