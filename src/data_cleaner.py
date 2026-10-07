@@ -265,6 +265,9 @@ class AirportDataCleaner(DataCleaner):
     ]
 
     WEATHER_NUMERIC_COLUMNS = [
+        "tavg",
+        "tmin",
+        "tmax",
         "temp",
         "dwpt",
         "rhum",
@@ -600,7 +603,11 @@ class AirportDataCleaner(DataCleaner):
         self.df[output_column] = date_values + time_values
         return self.df
 
-    def validate_weather(self) -> dict[str, pd.DataFrame]:
+    def validate_weather(
+        self,
+        *,
+        expected_frequency: str | None = None,
+    ) -> dict[str, pd.DataFrame]:
         """Validate weather ranges and timestamp continuity."""
 
         issues: dict[str, pd.DataFrame] = {}
@@ -614,6 +621,15 @@ class AirportDataCleaner(DataCleaner):
             "tsun": (0, 1440),
             "coco": (1, 5),
         }
+
+        temperature_ranges = {
+            "tavg": (-90, 70),
+            "tmin": (-90, 70),
+            "tmax": (-90, 70),
+            "temp": (-90, 70),
+            "dwpt": (-100, 70),
+        }
+        ranges.update(temperature_ranges)
 
         for column, (minimum, maximum) in ranges.items():
             if column not in self.df.columns:
@@ -630,21 +646,32 @@ class AirportDataCleaner(DataCleaner):
 
             issues[f"invalid_{column}"] = self.df[invalid]
 
-        if "time" in self.df.columns:
+        weather_time_column = (
+            "time" if "time" in self.df.columns
+            else "date" if "date" in self.df.columns
+            else None
+        )
+        if weather_time_column is not None:
             timestamps = pd.to_datetime(
-                self.df["time"],
+                self.df[weather_time_column],
                 errors="coerce",
             )
 
             issues["invalid_weather_time"] = self.df[
-                self.df["time"].notna() & timestamps.isna()
+                self.df[weather_time_column].notna() & timestamps.isna()
             ]
 
             ordered = timestamps.dropna().sort_values()
-            if len(ordered) > 1:
+            if len(ordered) > 1 and expected_frequency is not None:
                 intervals = ordered.diff().dropna()
-                invalid_intervals = intervals[intervals != pd.Timedelta(hours=1)]
-                issues["non_hourly_weather_intervals"] = pd.DataFrame(
+                expected_interval = pd.to_timedelta(
+                    1,
+                    unit=expected_frequency,
+                )
+                invalid_intervals = intervals[
+                    intervals != expected_interval
+                ]
+                issues["non_expected_weather_intervals"] = pd.DataFrame(
                     {"interval": invalid_intervals}
                 )
 
@@ -654,14 +681,17 @@ class AirportDataCleaner(DataCleaner):
         self,
         *,
         drop_duplicate_rows: bool = False,
+        date_column: str | None = None,
+        expected_frequency: str | None = None,
     ) -> pd.DataFrame:
-        """Clean and validate hourly weather data."""
+        """Clean and validate hourly or daily weather data."""
 
         self.normalize_columns()
         self.standardize_empty_values(
             missing_values=(
                 "",
                 "-",
+                r"\N",
                 "#N/A",
                 "N/A",
                 "NA",
@@ -670,10 +700,23 @@ class AirportDataCleaner(DataCleaner):
             ),
         )
 
-        self.convert_datetime(["time"])
+        datetime_columns = (
+            [date_column]
+            if date_column is not None
+            else ["time"] if "time" in self.df.columns
+            else ["date"] if "date" in self.df.columns
+            else []
+        )
+        if expected_frequency is None and datetime_columns:
+            expected_frequency = (
+                "h" if datetime_columns[0] == "time" else "D"
+            )
+        self.convert_datetime(datetime_columns)
         self.convert_numeric(self.WEATHER_NUMERIC_COLUMNS)
 
-        self._issues["weather_validation"] = self.validate_weather()
+        self._issues["weather_validation"] = self.validate_weather(
+            expected_frequency=expected_frequency,
+        )
 
         if drop_duplicate_rows:
             self.drop_duplicates()

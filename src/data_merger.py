@@ -142,8 +142,8 @@ class DataMerger:
         weather: pd.DataFrame,
         *,
         schedule_time_column: str = "scheduled_datetime",
-        weather_time_column: str = "time",
-        tolerance: str | pd.Timedelta | None = "1h",
+        weather_time_column: str = "date",
+        tolerance: str | pd.Timedelta | None = "12h",
     ) -> pd.DataFrame:
         """Merge the nearest weather observation onto each scheduled flight."""
 
