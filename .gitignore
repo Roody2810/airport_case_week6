@@ -1,0 +1,7 @@
+# Virtuele omgeving en Python-cache
+.venv/
+__pycache__/
+*.pyc
+
+# Streamlit-geheimen
+.streamlit/secrets.toml
