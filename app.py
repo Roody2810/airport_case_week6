@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import logging
+
 import pandas as pd
 import streamlit as st
 
@@ -12,6 +14,11 @@ from src.dashboard_onderdelen import (
 )
 
 
+# Basic logging to surface startup progress in cloud logs
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s:%(name)s: %(message)s")
+logger = logging.getLogger(__name__)
+logger.info("Starting app.py")
+
 DATA_DIR = Path(__file__).resolve().parent / "data"
 
 # Moet de eerste Streamlit-opdracht zijn
@@ -22,31 +29,42 @@ pagina_stijl()
 @st.cache_data(show_spinner="Data inlezen en combineren...")
 def load_datasets() -> dict[str, pd.DataFrame]:
     """Return all cleaned and merged datasets for dashboard development."""
+    logger.info("load_datasets: start")
 
     schedule_cleaner = AirportDataCleaner.from_schedule_csv(
         DATA_DIR / "schedule_airport.csv"
     )
+    logger.info("Loaded schedule CSV")
     schedule = schedule_cleaner.clean_schedule()
+    logger.info("Cleaned schedule")
 
     airports_cleaner = AirportDataCleaner.from_airports_csv(
         DATA_DIR / "airports-extended.csv"
     )
+    logger.info("Loaded airports CSV")
     airports = airports_cleaner.clean_airports()
+    logger.info("Cleaned airports")
 
     weather_cleaner = AirportDataCleaner.from_weather_csv(
         DATA_DIR / "weather_zurich_2019-2020.csv"
     )
+    logger.info("Loaded weather CSV")
     weather = weather_cleaner.clean_weather()
+    logger.info("Cleaned weather")
 
     # FixedDataMerger = DataMerger, maar met correcte weerkoppeling (zie src/data_fixes.py)
+    logger.info("Merging datasets")
     merger = FixedDataMerger(schedule)
     merger.create_delay_columns()
     merger.merge_airports(airports)
     merger.merge_weather(weather)
     merged = merger.get_df()
+    logger.info("Merged datasets")
 
     model_data = FixedDataMerger(merged).prepare_model_data()
+    logger.info("Prepared model_data")
 
+    logger.info("load_datasets: done")
     return {
         "schedule": schedule,
         "airports": airports,
@@ -62,7 +80,9 @@ def load_inspectierapport() -> dict:
     return bouw_inspectierapport(DATA_DIR)
 
 
+logger.info("Calling load_datasets()")
 datasets = load_datasets()
+logger.info("load_datasets() returned")
 
 schedule = datasets["schedule"]
 airports = datasets["airports"]
