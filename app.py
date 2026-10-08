@@ -26,7 +26,7 @@ st.write(
 
 @st.cache_data
 def laad_data():
-    df = pd.read_csv("schedule_airport.csv")
+    df = pd.read_csv("data/schedule_airport.csv")
 
     df["gepland"] = pd.to_datetime(
         df["STD"].astype(str) + " " +
