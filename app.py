@@ -8,6 +8,7 @@ from src.data_fixes import FixedDataMerger
 from src.data_inspectie import bouw_inspectierapport, toon_data_inspectie
 from src.dashboard_onderdelen import (
     pagina_stijl, toon_heatmap_dag_uur, toon_kaart, toon_kerncijfers, toon_kop, toon_vergelijking,
+    toon_lijngrafiek_tijd, toon_voorspelmodel
 )
 
 
@@ -105,10 +106,23 @@ else:
 
     jaar_data = merged if jaar_keuze == "Beide jaren" else merged[merged["std"].dt.year == int(jaar_keuze)]
 
-    tab_kaart, tab_tijd, tab_toestel = st.tabs(["🗺️  Bestemmingen", "🕒  Dag en uur", "🛫  Toestellen en banen"])
+    tab_kaart, tab_tijd, tab_toestel, tab_model = st.tabs([
+        "🗺️ Bestemmingen", 
+        "🕒 Dag en uur", 
+        "🛫 Toestellen en banen", 
+        "🤖 Voorspelmodel"
+    ])
+
     with tab_kaart:
         toon_kaart(merged, jaar_keuze)
+
     with tab_tijd:
+        toon_lijngrafiek_tijd(jaar_data)
+        st.write("---")
         toon_heatmap_dag_uur(jaar_data)
+
     with tab_toestel:
         toon_vergelijking(jaar_data)
+
+    with tab_model:
+        toon_voorspelmodel(model_data)

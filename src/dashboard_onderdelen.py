@@ -436,3 +436,129 @@ def toon_kerncijfers(df: pd.DataFrame, jaar_keuze: str = "Beide jaren") -> None:
     k4.metric("Bestemmingen", nl(selectie["org/des"].nunique()),
               verschil(selectie["org/des"].nunique(), waarde(ander, lambda d: d["org/des"].nunique()), "", 0),
               delta_color="off")
+
+# ==========================================================================
+# LIJNGRAFIEK OVER DE TIJD (2019 VS 2020)
+# ==========================================================================
+def toon_lijngrafiek_tijd(df: pd.DataFrame) -> None:
+    """Lijngrafiek met het verloop van de vertraging per maand (2019 vs 2020)."""
+    selectie = _met_analysekolommen(df)
+    
+    st.markdown("#### Vertraging over de tijd: 2019 vs 2020")
+    
+    # Per maand en jaar aggregeren
+    maand_stats = selectie.groupby(["jaar", "maand"], observed=True).agg(
+        aandeel=("is_delayed", "mean"),
+        gem_min=("delay_minutes", "mean"),
+        vluchten=("is_delayed", "size")
+    ).reset_index()
+    maand_stats["aandeel"] = maand_stats["aandeel"] * 100
+    
+    fig = go.Figure()
+    kleuren = {2019: BLAUW, 2020: ORANJE}
+    
+    maanden_namen = ["Jan", "Feb", "Mrt", "Apr", "Mei", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dec"]
+    
+    for yr in [2019, 2020]:
+        sub = maand_stats[maand_stats["jaar"] == yr]
+        fig.add_trace(go.Scatter(
+            x=sub["maand"], y=sub["aandeel"],
+            mode="lines+markers",
+            name=str(yr),
+            line=dict(color=kleuren.get(yr, BLAUW), width=2.5),
+            marker=dict(size=7),
+            customdata=np.stack([sub["vluchten"], sub["gem_min"]], axis=-1),
+            hovertemplate=f"<b>{yr} - %{{x}}</b><br>%{{y:,.1f}}% vertraagd<br>%{{customdata[0]:,}} vluchten<br>Gem. %{{customdata[1]:,.1f}} min<extra></extra>"
+        ))
+        
+    opmaak(fig, x_titel="Maand", y_titel="% Vertraagd (>15 min)", hoogte=350)
+    fig.update_xaxes(tickmode="array", tickvals=list(range(1, 13)), ticktext=maanden_namen)
+    toon(fig)
+    st.caption("Vergelijking van het aandeel vertraagde vluchten per maand in het normale jaar 2019 t.o.v. het coronajaar 2020.")
+
+
+# ==========================================================================
+# VOORSPELMODEL (FEATURE IMPORTANCE & EVALUATIE)
+# ==========================================================================
+def toon_voorspelmodel(model_data: pd.DataFrame) -> None:
+    """Traint een Random Forest model en toont feature importances en scores."""
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import accuracy_score, roc_auc_score
+    
+    st.markdown("#### Machine Learning: Wat veroorzaakt vertraging?")
+    st.caption("Een Random Forest Classifier voorspelt of een vlucht meer dan 15 minuten vertraging oploopt op basis van geplande kenmerken en het weer.")
+    
+    df = _met_analysekolommen(model_data).copy()
+    
+    # Gebruik de daadwerkelijk aanwezige kolommen in de dataset (tavg en prcp i.p.v. temp/rhum)
+    mogelijke_features = ["maand", "weekdag", "uur", "afstand_km", "tavg", "prcp", "wspd", "pres"]
+    feature_cols = [col for col in mogelijke_features if col in df.columns]
+    
+    if "is_delayed" not in df.columns or not feature_cols:
+        st.error("De vereiste kolommen voor het voorspelmodel ontbreken in de dataset.")
+        return
+
+    # Alleen rijen gebruiken waar de geselecteerde features compleet zijn
+    schoon = df.dropna(subset=feature_cols + ["is_delayed"]).copy()
+    
+    if len(schoon) < 1000:
+        st.warning("Te weinig data beschikbaar om het voorspelmodel betrouwbaar te trainen.")
+        return
+
+    X = schoon[feature_cols]
+    y = schoon["is_delayed"].astype(int)
+    
+    @st.cache_resource(show_spinner="Model trainen op vlucht- en weerdata...")
+    def train_model(X_train, y_train):
+        rf = RandomForestClassifier(n_estimators=50, max_depth=10, random_state=42, n_jobs=-1)
+        rf.fit(X_train, y_train)
+        return rf
+
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    model = train_model(X_train, y_train)
+    
+    preds = model.predict(X_test)
+    probs = model.predict_proba(X_test)[:, 1]
+    
+    acc = accuracy_score(y_test, preds)
+    auc = roc_auc_score(y_test, probs)
+    
+    # Top metrieken
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Model Nauwkeurigheid (Accuracy)", f"{acc * 100:.1f}%")
+    m2.metric("ROC-AUC Score", f"{auc:.3f}")
+    m3.metric("Aantal gebruikte vluchten", f"{len(schoon):,}".replace(",", "."))
+    
+    st.write("")
+    st.markdown("##### Welke factoren wegen het zwaarst? (Feature Importance)")
+    
+    # Nederlandse namen voor de weergave
+    naam_mapping = {
+        "maand": "Maand",
+        "weekdag": "Weekdag",
+        "uur": "Uur van vertrek",
+        "afstand_km": "Afstand (km)",
+        "tavg": "Gem. Temperatuur (°C)",
+        "prcp": "Neerslag (mm)",
+        "wspd": "Windsnelheid",
+        "pres": "Luchtdruk"
+    }
+    
+    importances = pd.DataFrame({
+        "Feature": [naam_mapping.get(col, col) for col in feature_cols],
+        "Belangrijkheid": model.feature_importances_
+    }).sort_values("Belangrijkheid", ascending=True)
+    
+    fig = go.Figure(go.Bar(
+        x=importances["Belangrijkheid"],
+        y=importances["Feature"],
+        orientation="h",
+        marker=dict(color=BLAUW)
+    ))
+    opmaak(fig, x_titel="Relatief belang van de feature in de voorspelling", hoogte=320, legenda=False)
+    toon(fig)
+    
+    st.caption(
+        "**Conclusie model:** Bovenstaande factoren tonen aan welk gewicht het model toekent aan vluchtkenmerken en weersomstandigheden bij het voorspellen van vertraging."
+    )
