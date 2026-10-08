@@ -1,6 +1,6 @@
 [server]
 # Eigen poort, zodat dit dashboard niet botst met andere Streamlit-apps op 8501
-port = 8510
+port = 8501
 # Pagina ververst vanzelf als je een bestand opslaat
 runOnSave = true
 
